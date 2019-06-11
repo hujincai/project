@@ -1,0 +1,230 @@
+Logback是由log4j创始人设计的一个开源日志组件。
+LogBack被分为3个组件，
+logback-core, logback-classic 和 logback-access。
+
+Logback是要与SLF4J结合起来。这两个组件的官方网站如下
+    logback官方网站：http://logback.qos.ch/
+    SLF4J官方网站：http://www.slf4j.org/
+    Slf4j：简单日志门面(Simple Logging Facade for Java)，不是具体的日志解决方案，它只服务于各种各样的日志系统
+    在使用SLF4J的时候，不需要在代码中或配置文件中指定你打算使用那个具体的日志系统.
+slf4j + logback是如何绑定的
+    1. private static final Logger LOGGER = LoggerFactory.getLogger(LogbackTest.class);
+
+    2. 查看LoggerFactory.getLogger()方法
+        public static Logger getLogger(Class<?> clazz) {
+            // 获取Logger对象
+            Logger logger = getLogger(clazz.getName());
+            if (DETECT_LOGGER_NAME_MISMATCH) {
+                Class<?> autoComputedCallingClass = Util.getCallingClass();
+                if (autoComputedCallingClass != null && nonMatchingClasses(clazz, autoComputedCallingClass)) {
+                    Util.report(String.format("Detected logger name mismatch. Given name: \"%s\"; computed name: \"%s\".", logger.getName(),
+                                    autoComputedCallingClass.getName()));
+                    Util.report("See " + LOGGER_NAME_MISMATCH_URL + " for an explanation");
+                }
+            }
+            return logger;
+        }
+
+    3. 继续跟进 getLogger()
+        /**
+         * Return a logger named according to the name parameter using the
+         * statically bound {@link ILoggerFactory} instance.
+         *
+         * @param name
+         *            The name of the logger.
+         * @return logger
+         */
+        public static Logger getLogger(String name) {
+            // 获取日志工厂
+            ILoggerFactory iLoggerFactory = getILoggerFactory();
+            // 返回日志对象
+            return iLoggerFactory.getLogger(name);
+        }
+
+    4. 获取工厂实例
+        /**
+         * Return the {@link ILoggerFactory} instance in use.
+         * <p/>
+         * <p/>
+         * ILoggerFactory instance is bound with this class at compile time.
+         * 编译时绑定工厂实例
+         *
+         * @return the ILoggerFactory instance in use
+         */
+        public static ILoggerFactory getILoggerFactory() {
+            // 没有初始化情况
+            // 双重检测锁
+            if (INITIALIZATION_STATE == UNINITIALIZED) {
+                synchronized (LoggerFactory.class) {
+                    if (INITIALIZATION_STATE == UNINITIALIZED) {
+                        // 初始化
+                        INITIALIZATION_STATE = ONGOING_INITIALIZATION;
+                        performInitialization();
+                    }
+                }
+            }
+            switch (INITIALIZATION_STATE) {
+            case SUCCESSFUL_INITIALIZATION:
+                return StaticLoggerBinder.getSingleton().getLoggerFactory();
+            case NOP_FALLBACK_INITIALIZATION:
+                return NOP_FALLBACK_FACTORY;
+            case FAILED_INITIALIZATION:
+                throw new IllegalStateException(UNSUCCESSFUL_INIT_MSG);
+            case ONGOING_INITIALIZATION:
+                // support re-entrant behavior.
+                // See also http://jira.qos.ch/browse/SLF4J-97
+                return SUBST_FACTORY;
+            }
+            throw new IllegalStateException("Unreachable code");
+        }
+
+    5. 初始化
+        private final static void performInitialization() {
+            bind();
+            if (INITIALIZATION_STATE == SUCCESSFUL_INITIALIZATION) {
+                versionSanityCheck();
+            }
+        }
+
+    6. 绑定
+        private final static void bind() {
+            try {
+                Set<URL> staticLoggerBinderPathSet = null;
+                // skip check under android, see also
+                // http://jira.qos.ch/browse/SLF4J-328
+                if (!isAndroid()) {
+                    staticLoggerBinderPathSet = findPossibleStaticLoggerBinderPathSet();
+                    reportMultipleBindingAmbiguity(staticLoggerBinderPathSet);
+                }
+                // the next line does the binding
+                // 真正的绑定，将具体的实现绑定到slf4j
+                StaticLoggerBinder.getSingleton();
+                INITIALIZATION_STATE = SUCCESSFUL_INITIALIZATION;
+                reportActualBinding(staticLoggerBinderPathSet);
+                fixSubstituteLoggers();
+                replayEvents();
+                // release all resources in SUBST_FACTORY
+                SUBST_FACTORY.clear();
+             }
+        }
+    logback-classic: org.slf4j.impl.StaticLoggerBinder
+        public static StaticLoggerBinder getSingleton() {
+            return SINGLETON;
+        }
+    由此可以看出slf4j在编译时就找了具体的日志实现了，也就是 org.slf4j.impl.StaticLoggerBinder。
+logback对配置文件的加载
+    getSingleton()方法获取logback实例对象，说明在对象之前已经加载了相关的配置文件，跟进 StaticLoggerBinder
+    static {
+            // 初始化
+            SINGLETON.init();
+        }
+
+        private boolean initialized = false;
+        private LoggerContext defaultLoggerContext = new LoggerContext();
+        private final ContextSelectorStaticBinder contextSelectorBinder = ContextSelectorStaticBinder.getSingleton();
+
+        private StaticLoggerBinder() {
+            defaultLoggerContext.setName(CoreConstants.DEFAULT_CONTEXT_NAME);
+        }
+
+        public static StaticLoggerBinder getSingleton() {
+            return SINGLETON;
+        }
+     查看 init()
+        /**
+         * Package access for testing purposes.
+         */
+        void init() {
+            try {
+                try {
+                    // 上下文初始化环境
+                    new ContextInitializer(defaultLoggerContext).autoConfig();
+                } catch (JoranException je) {
+                    Util.report("Failed to auto configure default logger context", je);
+                }
+                // logback-292
+                if (!StatusUtil.contextHasStatusListener(defaultLoggerContext)) {
+                    StatusPrinter.printInCaseOfErrorsOrWarnings(defaultLoggerContext);
+                }
+                contextSelectorBinder.init(defaultLoggerContext, KEY);
+                initialized = true;
+            } catch (Throwable t) {
+                // we should never get here
+                Util.report("Failed to instantiate [" + LoggerContext.class.getName() + "]", t);
+            }
+        }
+
+    3. 跟进autoConfig()
+        public void autoConfig() throws JoranException {
+            StatusListenerConfigHelper.installIfAsked(loggerContext);
+            // 寻找默认配置文件
+            URL url = findURLOfDefaultConfigurationFile(true);
+            if (url != null) {
+                configureByResource(url);
+            } else {
+                Configurator c = EnvUtil.loadFromServiceLoader(Configurator.class);
+                if (c != null) {
+                    try {
+                        c.setContext(loggerContext);
+                        c.configure(loggerContext);
+                    } catch (Exception e) {
+                        throw new LogbackException(String.format("Failed to initialize Configurator: %s using ServiceLoader", c != null ? c.getClass()
+                                        .getCanonicalName() : "null"), e);
+                    }
+                } else {
+                    // 没有找到配置文件，则使用默认的配置器，那么日志只会打印在控制台
+                    BasicConfigurator basicConfigurator = new BasicConfigurator();
+                    basicConfigurator.setContext(loggerContext);
+                    basicConfigurator.configure(loggerContext);
+                }
+            }
+        }
+
+    4. findURLOfDefaultConfigurationFile() logback配置文件加载规则
+        public URL findURLOfDefaultConfigurationFile(boolean updateStatus) {
+            // 获取当前实例的类加载器，目的是在classpath下寻找配置文件
+            ClassLoader myClassLoader = Loader.getClassLoaderOfObject(this);
+            // 先找logback.configurationFile文件
+            URL url = findConfigFileURLFromSystemProperties(myClassLoader, updateStatus);
+            if (url != null) {
+                return url;
+            }
+            // logback.configurationFile文件没找到，再找logback.groovy
+            url = getResource(GROOVY_AUTOCONFIG_FILE, myClassLoader, updateStatus);
+            if (url != null) {
+                return url;
+            }
+            // logback.groovy没找到，再找logback-test.xml
+            url = getResource(TEST_AUTOCONFIG_FILE, myClassLoader, updateStatus);
+            if (url != null) {
+                return url;
+            }
+            // logback-test.xml没找到，最后找logback.xml
+            return getResource(AUTOCONFIG_FILE, myClassLoader, updateStatus);
+        }
+
+        小结：
+        编译期间，完成slf4j的绑定已经logback配置文件的加载。
+        slf4j会在classpath中寻找org/slf4j/impl/StaticLoggerBinder.class(会在具体的日志框架如log4j、logback等中存在)，
+        找到并完成绑定；同时，logback也会在classpath中寻找配置文件，先找logback.configurationFile、
+        没有则找logback.groovy，若logback.groovy也没有，则找logback-test.xml，
+        若logback-test.xml还是没有，则找logback.xml，若连logback.xml也没有，
+        那么说明没有配置logback的配置文件，那么logback则会启用默认的配置(日志信息只会打印在控制台)。
+
+        为什么使用logback
+        logback具有以下优点：
+
+        内核重写、测试充分、初始化内存加载更小，这一切让logback性能和log4j相比有诸多倍的提升
+        logback非常自然地直接实现了slf4j，这个严格来说算不上优点，只是这样，再理解slf4j的前提下会很容易理解logback，也同时很容易用其他日志框架替换logbac
+        logback有比较齐全的200多页的文档
+        logback当配置文件修改了，支持自动重新加载配置文件，扫描过程快且安全，它并不需要另外创建一个扫描线程
+        支持自动去除旧的日志文件，可以控制已经产生日志文件的最大数量
+
+        总而言之，如果大家的项目里面需要选择一个日志框架，那么我个人非常建议使用logback。
+
+
+
+        测试结果：
+                        logback-1.1.7  log4j-1.2.17  log4j2-2.7
+        100万（95M）异步  13.672ms       13.776ms      10.170ms
+        1000万（1G）异步  132,721ms      145.512ms     74.040ms
