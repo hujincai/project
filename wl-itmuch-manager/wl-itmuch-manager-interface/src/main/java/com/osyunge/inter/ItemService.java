@@ -1,6 +1,7 @@
 package com.osyunge.inter;
 
 import com.osyunge.dataobject.EasyUIDataGridResult;
+import com.osyunge.dataobject.FCResult;
 import com.osyunge.pojo.TbItem;
 
 import java.util.List;
@@ -13,8 +14,10 @@ import java.util.List;
  * @Version 1.0
  */
 public interface ItemService {
-    TbItem selectItemInfoByItemId(long itemId);
 
+    TbItem selectItemInfoByItemId(long itemId);
     /*查询商品列表*/
     EasyUIDataGridResult getItemList(int page,int rows);
+    /*商品新增*/
+    FCResult createItem(TbItem item,String desc);
 }
