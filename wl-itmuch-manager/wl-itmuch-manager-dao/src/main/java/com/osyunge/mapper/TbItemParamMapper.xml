@@ -7,8 +7,9 @@
     <result column="created" property="created" jdbcType="TIMESTAMP" />
     <result column="updated" property="updated" jdbcType="TIMESTAMP" />
   </resultMap>
-  <resultMap id="ResultMapWithBLOBs" type="com.osyunge.pojo.TbItemParam" extends="BaseResultMap" >
+  <resultMap id="ResultMapWithBLOBs" type="com.osyunge.pojo.TbItemParamPlus" extends="BaseResultMap" >
     <result column="param_data" property="paramData" jdbcType="LONGVARCHAR" />
+    <result column="item_cat_name" property="itemCatName" jdbcType="VARCHAR"></result>
   </resultMap>
   <sql id="Example_Where_Clause" >
     <where >
@@ -248,4 +249,20 @@
       updated = #{updated,jdbcType=TIMESTAMP}
     where id = #{id,jdbcType=BIGINT}
   </update>
+
+  <select id="getItemParamList" resultMap="ResultMapWithBLOBs">
+    SELECT
+      tip.id,
+      tip.item_cat_id ItemCatId,
+      tic.name itemCatName,
+      tip.param_data paramData,
+      tip.created,
+      tip.updated
+    FROM
+      tb_item_cat tic,
+      tb_item_param tip
+    WHERE
+      tic.id = tip.item_cat_id
+  </select>
+
 </mapper>

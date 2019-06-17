@@ -2,6 +2,7 @@ package com.osyunge.mapper;
 
 import com.osyunge.pojo.TbItemParam;
 import com.osyunge.pojo.TbItemParamExample;
+import com.osyunge.pojo.TbItemParamPlus;
 import org.apache.ibatis.annotations.Param;
 
 import java.util.List;
@@ -34,4 +35,7 @@ public interface TbItemParamMapper {
     int updateByPrimaryKeyWithBLOBs(TbItemParam record);
 
     int updateByPrimaryKey(TbItemParam record);
+
+    /*新增查询规格参数模板列表接口*/
+    List<TbItemParamPlus> getItemParamList(int page, int rows);
 }
