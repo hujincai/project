@@ -37,7 +37,7 @@
     <zkclient.version>0.1</zkclient.version>
     <activemq-spring.version>5.10.0</activemq-spring.version>
     <freemarker.version>2.3.23</freemarker.version>
-    <quartz.version>2.2.2</quartz.version>
+    <quartz.version>2.3.2</quartz.version>
     <projectlombok.version>1.16.20</projectlombok.version>
     <slf4j.version>1.7.25</slf4j.version>
     <logback.version>1.2.3</logback.version>
